@@ -436,6 +436,7 @@
                     <button class="tab active" onclick="switchTab('tokenization')">Tokens</button>
                     <button class="tab" onclick="switchTab('context')">Context</button>
                     <button class="tab" onclick="switchTab('ngrams')">N-grams</button>
+                    <button class="tab" onclick="switchTab('whatsapp')">WhatsApp</button>
                 </div>
 
                 <div id="tokenization" class="tab-content active">
@@ -453,6 +454,37 @@
                 <div id="ngrams" class="tab-content">
                     <div class="code-block" id="ngramData">
                         N-gram analysis will appear here...
+                    </div>
+                </div>
+
+                <div id="whatsapp" class="tab-content">
+                    <div style="display: flex; flex-direction: column; height: 100%; gap: 8px;">
+                        <div style="flex-shrink: 0;">
+                            <div style="margin-bottom: 8px; font-size: 0.8rem; color: #6c757d;">
+                                📱 Import WhatsApp Chat Export
+                            </div>
+                            <textarea 
+                                id="whatsappData" 
+                                placeholder="Paste your WhatsApp chat export here...&#10;&#10;Format example:&#10;09/02/24, 8:04 pm - John: Hello there&#10;09/02/24, 8:05 pm - Mary: Hi! How are you?"
+                                style="width: 100%; height: 100px; padding: 8px; border: 1px solid #e9ecef; border-radius: 4px; font-family: monospace; font-size: 0.75rem; resize: none;"
+                            ></textarea>
+                            <div style="display: flex; gap: 4px; margin-top: 4px;">
+                                <button class="btn btn-primary" onclick="importWhatsAppChat()" style="font-size: 0.7rem; padding: 4px 8px;">
+                                    📥 Import Chat
+                                </button>
+                                <button class="btn btn-secondary" onclick="loadSampleWhatsApp()" style="font-size: 0.7rem; padding: 4px 8px;">
+                                    📝 Sample
+                                </button>
+                                <button class="btn btn-secondary" onclick="clearWhatsAppData()" style="font-size: 0.7rem; padding: 4px 8px;">
+                                    🗑️ Clear
+                                </button>
+                            </div>
+                        </div>
+                        <div style="flex: 1; overflow: hidden;">
+                            <div class="code-block" id="whatsappResults" style="height: 100%;">
+                                Import results will appear here...
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -852,6 +884,80 @@ ${tokenization.characters.map(c =>
             const text = samples[Math.floor(Math.random() * samples.length)];
             document.getElementById('inputText').value = text;
             updatePredictions();
+        }
+
+        // WhatsApp import functions
+        function importWhatsAppChat() {
+            const chatData = document.getElementById('whatsappData').value.trim();
+            if (!chatData) {
+                showStatus('No WhatsApp chat data provided', 'error');
+                return;
+            }
+            
+            showStatus('Processing WhatsApp chat...', 'info');
+            
+            fetch('/api/import_whatsapp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_data: chatData })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus(`Successfully imported ${data.sentences_added} sentences from ${data.total_messages} messages`, 'success');
+                    displayWhatsAppResults(data);
+                    updateStats();
+                } else {
+                    showStatus(`Import failed: ${data.error}`, 'error');
+                    document.getElementById('whatsappResults').textContent = `Error: ${data.error}`;
+                }
+            })
+            .catch(error => {
+                showStatus(`Error: ${error.message}`, 'error');
+                document.getElementById('whatsappResults').textContent = `Network error: ${error.message}`;
+            });
+        }
+
+        function displayWhatsAppResults(data) {
+            const resultsText = `WhatsApp Chat Import Results:
+═══════════════════════════════════════
+
+📊 Summary:
+- Total messages processed: ${data.total_messages}
+- Sentences extracted: ${data.sentences_extracted}
+- Sentences added to model: ${data.sentences_added}
+- Unique senders: ${data.unique_senders.join(', ')}
+- Date range: ${data.date_range.start} to ${data.date_range.end}
+
+✅ Import completed successfully!
+The extracted sentences have been added to the knowledge base.
+You can now use this data for text prediction and generation.
+
+💡 Tip: Switch to other tabs to see how the new data affects predictions.`;
+            
+            document.getElementById('whatsappResults').textContent = resultsText;
+        }
+
+        function loadSampleWhatsApp() {
+            const sampleChat = `09/02/24, 8:04\u202fpm - Messages and calls are end-to-end encrypted. Only people in this chat can read, listen to, or share them. Learn more.
+15/04/24, 8:53\u202fpm - Alice: Will demo at 9:30
+15/04/24, 8:53\u202fpm - Bob: Okay
+15/04/24, 9:20\u202fpm - Alice: Good
+15/04/24, 9:20\u202fpm - Alice: Also explain the flow in call
+19/04/24, 9:28\u202fam - Alice: Code pushed
+19/04/24, 12:57\u202fpm - Bob: Sir I am really sorry for this I will do it as soon as possible
+19/04/24, 1:06\u202fpm - Alice: Sure. Take care. I will check in evening
+19/04/24, 7:52\u202fpm - Bob: api service based code pushed with updated readme
+19/04/24, 7:56\u202fpm - Alice: Sure I will check, thanks buddy`;
+            
+            document.getElementById('whatsappData').value = sampleChat;
+            showStatus('Sample WhatsApp chat loaded', 'info');
+        }
+
+        function clearWhatsAppData() {
+            document.getElementById('whatsappData').value = '';
+            document.getElementById('whatsappResults').textContent = 'Import results will appear here...';
+            showStatus('WhatsApp data cleared', 'info');
         }
 
         // Event listeners
