@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markov Chain Text Predictor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            color: #333;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-rows: auto auto 1fr;
+            grid-template-columns: 400px 1fr 350px;
+            gap: 12px;
+            height: 100vh;
+            padding: 12px;
+            grid-template-areas: 
+                "header header header"
+                "status status status"
+                "input predictions stats";
+        }
+
+        .header {
+            grid-area: header;
+            text-align: center;
+            color: white;
+            padding: 8px 0;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 300;
+            margin-bottom: 4px;
+        }
+
+        .header p {
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+
+        .status-bar {
+            grid-area: status;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 8px 16px;
+            text-align: center;
+            color: white;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .status-bar.success { background: rgba(46, 204, 113, 0.2); }
+        .status-bar.error { background: rgba(231, 76, 60, 0.2); }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .input-panel {
+            grid-area: input;
+        }
+
+        .predictions-panel {
+            grid-area: predictions;
+        }
+
+        .stats-panel {
+            grid-area: stats;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #f8f9fa;
+        }
+
+        .panel-icon {
+            font-size: 1.2rem;
+            margin-right: 8px;
+            color: #667eea;
+        }
+
+        .panel-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .text-input {
+            width: 100%;
+            height: 120px;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            resize: none;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            background: white;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #6c757d;
+            border: 1px solid #e9ecef;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+        }
+
+        .analysis-section {
+            flex: 1;
+            margin-top: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #f8f9fa;
+            margin-bottom: 8px;
+            flex-shrink: 0;
+        }
+
+        .tab {
+            padding: 6px 12px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-weight: 500;
+            color: #6c757d;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            border-bottom: 2px solid transparent;
+            flex: 1;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .code-block {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 8px;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-size: 0.75rem;
+            line-height: 1.3;
+            color: #495057;
+            white-space: pre-wrap;
+            height: 100%;
+            overflow-y: auto;
+        }
+
+        .predictions-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: repeat(4, 1fr);
+            gap: 12px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .prediction-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid #e9ecef;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .prediction-header {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .prediction-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .prediction-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            font-size: 0.8rem;
+        }
+
+        .prediction-text {
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-weight: 500;
+            color: #2c3e50;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .prediction-prob {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .generation-card {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            color: #2c3e50;
+            overflow-y: auto;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 8px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            border-radius: 8px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .stat-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 2px;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .stats-detail {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #6c757d;
+            font-style: italic;
+            font-size: 0.8rem;
+            text-align: center;
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard {
+                grid-template-columns: 350px 1fr 300px;
+            }
+        }
+
+        @media (max-width: 1000px) {
+            .dashboard {
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: auto auto 1fr 1fr;
+                grid-template-areas: 
+                    "header header"
+                    "status status"
+                    "input predictions"
+                    "stats stats";
+            }
+            
+            .predictions-grid {
+                grid-template-columns: 1fr 1fr 1fr 1fr;
+                grid-template-rows: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto 1fr 1fr 1fr;
+                grid-template-areas: 
+                    "header"
+                    "status"
+                    "input"
+                    "predictions"
+                    "stats";
+            }
+            
+            .predictions-grid {
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: 1fr 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔮 Markov Chain Text Predictor</h1>
+            <p>Advanced probabilistic text prediction system</p>
+        </div>
+
+        <!-- Status Bar -->
+        <div id="status" class="status-bar">
+            Ready to analyze your text
+        </div>
+
+        <!-- Input Panel -->
+        <div class="panel input-panel">
+            <div class="panel-header">
+                <span class="panel-icon">✍️</span>
+                <h2 class="panel-title">Text Input</h2>
+            </div>
+            
+            <textarea 
+                id="inputText" 
+                class="text-input" 
+                placeholder="Start typing here to see real-time predictions..."
+            ></textarea>
+            
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="refreshPredictions()">
+                    🔄 Analyze
+                </button>
+                <button class="btn btn-primary" onclick="addToKnowledgeBase()">
+                    💾 Learn
+                </button>
+                <button class="btn btn-secondary" onclick="loadSampleText()">
+                    📝 Sample
+                </button>
+                <button class="btn btn-secondary" onclick="clearText()">
+                    🗑️ Clear
+                </button>
+            </div>
+
+            <div class="analysis-section">
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('tokenization')">Tokens</button>
+                    <button class="tab" onclick="switchTab('context')">Context</button>
+                    <button class="tab" onclick="switchTab('ngrams')">N-grams</button>
+                </div>
+
+                <div id="tokenization" class="tab-content active">
+                    <div class="code-block" id="tokenizationData">
+                        Tokenization details will appear here...
+                    </div>
+                </div>
+
+                <div id="context" class="tab-content">
+                    <div class="code-block" id="contextData">
+                        Context suggestions will appear here...
+                    </div>
+                </div>
+
+                <div id="ngrams" class="tab-content">
+                    <div class="code-block" id="ngramData">
+                        N-gram analysis will appear here...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Predictions Panel -->
+        <div class="panel predictions-panel">
+            <div class="panel-header">
+                <span class="panel-icon">🔮</span>
+                <h2 class="panel-title">Predictions & Analysis</h2>
+            </div>
+
+            <div class="predictions-grid">
+                <!-- Word Predictions -->
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        🔮 Words
+                    </div>
+                    <div class="prediction-list" id="wordPredictions">
+                        <div class="empty-state">Type text to see predictions</div>
+                    </div>
+                </div>
+
+                <!-- Character Predictions -->
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        🔤 Characters
+                    </div>
+                    <div class="prediction-list" id="charPredictions">
+                        <div class="empty-state">Type text to see predictions</div>
+                    </div>
+                </div>
+
+                <!-- Word Completions -->
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        ✨ Completions
+                    </div>
+                    <div class="prediction-list" id="wordCompletions">
+                        <div class="empty-state">Type partial word</div>
+                    </div>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        📊 Current Text
+                    </div>
+                    <div class="prediction-list" id="currentStats">
+                        <div class="empty-state">Text stats will appear here</div>
+                    </div>
+                </div>
+
+                <!-- Text Generation -->
+                <div class="generation-card">
+                    <div class="prediction-header">
+                        🎨 Generated Text
+                    </div>
+                    <div id="textGeneration">
+                        Generated text continuation will appear here...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Panel -->
+        <div class="panel stats-panel">
+            <div class="panel-header">
+                <span class="panel-icon">📊</span>
+                <h2 class="panel-title">Model Statistics</h2>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="statSentences">0</div>
+                    <div class="stat-label">Sentences</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="statWords">0</div>
+                    <div class="stat-label">Words</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="statChars">0</div>
+                    <div class="stat-label">Characters</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="statNgrams">0</div>
+                    <div class="stat-label">N-grams</div>
+                </div>
+            </div>
+
+            <div class="stats-detail">
+                <div class="code-block" id="detailedStats">
+                    Loading model statistics...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let updateTimeout;
+        let lastText = '';
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Status management
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status-bar ${type}`;
+        }
+
+        // Update predictions with debouncing
+        function updatePredictions() {
+            const text = document.getElementById('inputText').value.trim();
+            
+            if (text === lastText) return;
+            lastText = text;
+            
+            if (!text) {
+                clearPredictions();
+                return;
+            }
+            
+            showStatus('Analyzing text...', 'info');
+            
+            fetch(`/api/process?text=${encodeURIComponent(text)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayResults(data);
+                        showStatus('Analysis complete', 'success');
+                    } else {
+                        showStatus(`Error: ${data.error}`, 'error');
+                        clearPredictions();
+                    }
+                })
+                .catch(error => {
+                    showStatus(`Network error: ${error.message}`, 'error');
+                    clearPredictions();
+                });
+        }
+
+        function displayResults(data) {
+            displayTokenization(data.tokenization);
+            displayWordPredictions(data.word_predictions);
+            displayCharacterPredictions(data.character_predictions);
+            displayWordCompletions(data.word_completions);
+            displayTextGeneration(data.text_completions);
+            displayCurrentStats(data.tokenization);
+            displayContextSuggestions(data.suggestions);
+            displayNgramAnalysis(data);
+        }
+
+        function displayCurrentStats(tokenization) {
+            const container = document.getElementById('currentStats');
+            container.innerHTML = `
+                <div class="prediction-item">
+                    <span class="prediction-text">Words</span>
+                    <span class="prediction-prob">${tokenization.word_count}</span>
+                </div>
+                <div class="prediction-item">
+                    <span class="prediction-text">Characters</span>
+                    <span class="prediction-prob">${tokenization.char_count}</span>
+                </div>
+            `;
+        }
+
+        function displayTokenization(tokenization) {
+            const tokenData = `Words (${tokenization.word_count}):
+${tokenization.words.map(w => `"${w}"`).join(', ')}
+
+Characters (${tokenization.char_count}):
+${tokenization.characters.map(c => 
+    [' ', '\n', '\t'].includes(c) ? JSON.stringify(c) : c
+).join(' ')}`;
+            
+            document.getElementById('tokenizationData').textContent = tokenData;
+        }
+
+        function displayWordPredictions(wordPreds) {
+            const container = document.getElementById('wordPredictions');
+            
+            if (wordPreds.success && wordPreds.predictions.length > 0) {
+                container.innerHTML = '';
+                wordPreds.predictions.slice(0, 5).forEach(pred => {
+                    const item = document.createElement('div');
+                    item.className = 'prediction-item';
+                    item.innerHTML = `
+                        <span class="prediction-text">"${pred.word}"</span>
+                        <span class="prediction-prob">${(pred.probability * 100).toFixed(1)}%</span>
+                    `;
+                    container.appendChild(item);
+                });
+            } else {
+                container.innerHTML = '<div class="empty-state">No predictions</div>';
+            }
+        }
+
+        function displayCharacterPredictions(charPreds) {
+            const container = document.getElementById('charPredictions');
+            
+            if (charPreds.success && charPreds.predictions.length > 0) {
+                container.innerHTML = '';
+                charPreds.predictions.slice(0, 5).forEach(pred => {
+                    const charDisplay = [' ', '\n', '\t'].includes(pred.character) 
+                        ? JSON.stringify(pred.character) 
+                        : pred.character;
+                    
+                    const item = document.createElement('div');
+                    item.className = 'prediction-item';
+                    item.innerHTML = `
+                        <span class="prediction-text">${charDisplay}</span>
+                        <span class="prediction-prob">${(pred.probability * 100).toFixed(1)}%</span>
+                    `;
+                    container.appendChild(item);
+                });
+            } else {
+                container.innerHTML = '<div class="empty-state">No predictions</div>';
+            }
+        }
+
+        function displayWordCompletions(wordComps) {
+            const container = document.getElementById('wordCompletions');
+            
+            if (wordComps.success && wordComps.completions.length > 0) {
+                container.innerHTML = '';
+                wordComps.completions.slice(0, 5).forEach(comp => {
+                    const item = document.createElement('div');
+                    item.className = 'prediction-item';
+                    item.innerHTML = `
+                        <span class="prediction-text">"${comp.word}"</span>
+                        <span class="prediction-prob">${(comp.probability * 100).toFixed(1)}%</span>
+                    `;
+                    container.appendChild(item);
+                });
+            } else {
+                container.innerHTML = '<div class="empty-state">No completions</div>';
+            }
+        }
+
+        function displayTextGeneration(textGen) {
+            const container = document.getElementById('textGeneration');
+            
+            if (textGen.success) {
+                container.textContent = textGen.generated_text;
+            } else {
+                container.textContent = 'Generation failed. Try providing more context.';
+            }
+        }
+
+        function displayContextSuggestions(suggestions) {
+            let contextText = '';
+            
+            if (Object.keys(suggestions).length > 0) {
+                Object.entries(suggestions).forEach(([ngram, suggestion]) => {
+                    contextText += `${ngram}-gram: [${suggestion.context.join(', ')}]\n`;
+                    contextText += `Count: ${suggestion.total_count}\n`;
+                    suggestion.predictions.slice(0, 3).forEach((pred, i) => {
+                        contextText += `  ${i + 1}. "${pred.token}" (${(pred.probability * 100).toFixed(1)}%)\n`;
+                    });
+                    contextText += '\n';
+                });
+            } else {
+                contextText = 'No context suggestions available.';
+            }
+            
+            document.getElementById('contextData').textContent = contextText;
+        }
+
+        function displayNgramAnalysis(data) {
+            let ngramText = '';
+            
+            if (data.word_predictions.success) {
+                ngramText += `Word N-gram: ${data.word_predictions.ngram_size}\n`;
+                ngramText += `Context: ${data.word_predictions.context_used ? data.word_predictions.context_used.join(' ') : 'None'}\n\n`;
+            }
+            
+            if (data.character_predictions.success) {
+                ngramText += `Char N-gram: ${data.character_predictions.ngram_size}\n`;
+                ngramText += `Context: ${data.character_predictions.context_used ? data.character_predictions.context_used.join('') : 'None'}\n\n`;
+            }
+            
+            ngramText += `Suggestion types: ${Object.keys(data.suggestions).length}\n`;
+            Object.keys(data.suggestions).forEach(ngram => {
+                ngramText += `  - ${ngram}-gram\n`;
+            });
+            
+            document.getElementById('ngramData').textContent = ngramText;
+        }
+
+        function clearPredictions() {
+            document.getElementById('wordPredictions').innerHTML = '<div class="empty-state">No predictions</div>';
+            document.getElementById('charPredictions').innerHTML = '<div class="empty-state">No predictions</div>';
+            document.getElementById('wordCompletions').innerHTML = '<div class="empty-state">No completions</div>';
+            document.getElementById('currentStats').innerHTML = '<div class="empty-state">No stats</div>';
+            document.getElementById('textGeneration').textContent = 'Generated text will appear here...';
+            document.getElementById('tokenizationData').textContent = 'Tokenization details will appear here...';
+            document.getElementById('contextData').textContent = 'Context suggestions will appear here...';
+            document.getElementById('ngramData').textContent = 'N-gram analysis will appear here...';
+        }
+
+        function updateStats() {
+            fetch('/api/stats')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('statSentences').textContent = 'Error';
+                        document.getElementById('statWords').textContent = 'Error';
+                        document.getElementById('statChars').textContent = 'Error';
+                        document.getElementById('statNgrams').textContent = 'Error';
+                        document.getElementById('detailedStats').textContent = `Error: ${data.error}`;
+                    } else {
+                        document.getElementById('statSentences').textContent = data.training_sentences;
+                        document.getElementById('statWords').textContent = data.total_word_contexts;
+                        document.getElementById('statChars').textContent = data.total_char_contexts;
+                        document.getElementById('statNgrams').textContent = data.ngram_sizes.length;
+                        
+                        let statsText = 'Word N-grams:\n';
+                        Object.entries(data.word_ngram_stats).forEach(([ngram, stats]) => {
+                            statsText += `  ${ngram}: ${stats.total_count} total, ${stats.unique_contexts} unique\n`;
+                        });
+                        
+                        statsText += '\nChar N-grams:\n';
+                        Object.entries(data.char_ngram_stats).forEach(([ngram, stats]) => {
+                            statsText += `  ${ngram}: ${stats.total_count} total, ${stats.unique_contexts} unique\n`;
+                        });
+                        
+                        document.getElementById('detailedStats').textContent = statsText;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('detailedStats').textContent = `Error: ${error.message}`;
+                });
+        }
+
+        // Button actions
+        function clearText() {
+            document.getElementById('inputText').value = '';
+            lastText = '';
+            clearPredictions();
+            showStatus('Text cleared', 'info');
+        }
+
+        function refreshPredictions() {
+            lastText = '';
+            updatePredictions();
+        }
+
+        function addToKnowledgeBase() {
+            const text = document.getElementById('inputText').value.trim();
+            if (!text) {
+                showStatus('No text to add', 'error');
+                return;
+            }
+            
+            showStatus('Adding to knowledge base...', 'info');
+            
+            fetch('/api/add_text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('Added to knowledge base', 'success');
+                    updateStats();
+                } else {
+                    showStatus(`Failed: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus(`Error: ${error.message}`, 'error');
+            });
+        }
+
+        function loadSampleText() {
+            const samples = [
+                "The quick brown fox jumps over the lazy dog.",
+                "Machine learning algorithms predict patterns in data.",
+                "Natural language processing understands human language.",
+                "Markov chains model probabilistic transitions."
+            ];
+            const text = samples[Math.floor(Math.random() * samples.length)];
+            document.getElementById('inputText').value = text;
+            updatePredictions();
+        }
+
+        // Event listeners
+        document.getElementById('inputText').addEventListener('input', function() {
+            clearTimeout(updateTimeout);
+            updateTimeout = setTimeout(updatePredictions, 500);
+        });
+
+        document.getElementById('inputText').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                addToKnowledgeBase();
+            }
+        });
+
+        // Initialize
+        updateStats();
+        setInterval(updateStats, 30000);
+    </script>
+</body>
+</html>
